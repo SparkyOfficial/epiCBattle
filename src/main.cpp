@@ -5,7 +5,7 @@
 #include <vector>
 #include <cmath>
 
-enum class GameState { Menu, CharacterSelect, Settings, Arena, Exit };
+enum class GameState { Menu, ModeSelect, CharacterSelect, Settings, Arena, Pause, Exit };
 enum class ViewMode { FirstPerson, ThirdPerson };
 
 struct CharacterDef {
@@ -147,6 +147,13 @@ int main() {
         }
     };
 
+    // Rounds / scoring
+    int playerScore[2] = {0, 0};
+    int targetScore = 3;
+    float koTimer = 0.0f;
+    int lastScorer = -1;
+    bool roundActive = true;
+
     float fixedDt = 1.0f/60.0f;
     double accumulator = 0.0;
     double lastTime = GetTime();
@@ -169,7 +176,15 @@ int main() {
         switch (gameState) {
             case GameState::Menu: {
                 if (IsKeyPressed(KEY_ENTER) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    gameState = GameState::ModeSelect;
+                }
+            } break;
+            case GameState::ModeSelect: {
+                if (IsKeyPressed(KEY_ENTER)) {
                     gameState = GameState::CharacterSelect;
+                }
+                if (IsKeyPressed(KEY_ESCAPE)) {
+                    gameState = GameState::Menu;
                 }
             } break;
             case GameState::CharacterSelect: {
@@ -208,6 +223,10 @@ int main() {
                 }
                 if (IsKeyPressed(KEY_P)) {
                     gameState = GameState::Settings;
+                }
+                if (IsKeyPressed(KEY_ESCAPE)) {
+                    gameState = GameState::Pause;
+                    break;
                 }
 
                 // Input for two local players
@@ -271,7 +290,7 @@ int main() {
                         // Attack logic
                         server.players[i].attackCooldown -= fixedDt;
                         if (server.players[i].attackCooldown < 0.0f) server.players[i].attackCooldown = 0.0f;
-                        if (doAttackPressed(i) && server.players[i].attackCooldown <= 0.0f) {
+                        if (roundActive && doAttackPressed(i) && server.players[i].attackCooldown <= 0.0f) {
                             server.players[i].attacking = true;
                             server.players[i].attackTimer = 0.2f;
                             server.players[i].attackCooldown = 0.6f;
@@ -283,6 +302,35 @@ int main() {
                             if (server.players[i].attackTimer <= 0.0f) server.players[i].attacking = false;
                         }
                     }
+                    // KO / round logic
+                    if (roundActive) {
+                        for (int i = 0; i < 2; ++i) {
+                            if (server.players[i].health <= 0) {
+                                int scorer = (i == 0) ? 1 : 0;
+                                playerScore[scorer]++;
+                                lastScorer = scorer;
+                                koTimer = 2.0f;
+                                roundActive = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        koTimer -= fixedDt;
+                        if (koTimer <= 0.0f) {
+                            // Respawn both
+                            resetPlayer(server.players[0]);
+                            server.players[0].position = {-4.0f, 0.0f, 0.0f};
+                            resetPlayer(server.players[1]);
+                            server.players[1].position = { 4.0f, 0.0f, 0.0f};
+                            roundActive = true;
+                            // Match end
+                            if (playerScore[0] >= targetScore || playerScore[1] >= targetScore) {
+                                gameState = GameState::ModeSelect;
+                                playerScore[0] = playerScore[1] = 0;
+                            }
+                        }
+                    }
+
                     accumulator -= fixedDt;
                 }
 
@@ -322,8 +370,13 @@ int main() {
                     EnableCursor();
                 }
 
-                if (IsKeyPressed(KEY_ESCAPE)) {
-                    gameState = GameState::CharacterSelect;
+            } break;
+            case GameState::Pause: {
+                if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) {
+                    gameState = GameState::Arena;
+                }
+                if (IsKeyPressed(KEY_BACKSPACE)) {
+                    gameState = GameState::Menu;
                 }
             } break;
             case GameState::Exit: {
@@ -340,6 +393,10 @@ int main() {
             DrawText("epiCBattle", 40, 40, 64, RAYWHITE);
             DrawText("Press Enter to Start", 40, 130, 30, LIGHTGRAY);
             DrawText("Press S for Settings", 40, 170, 24, GRAY);
+        } else if (gameState == GameState::ModeSelect) {
+            DrawText("Select Mode", 40, 40, 48, RAYWHITE);
+            DrawText("1v1 Arena (Enter)", 40, 110, 28, LIGHTGRAY);
+            DrawText("Esc: Back", 40, 160, 20, GRAY);
         } else if (gameState == GameState::CharacterSelect) {
             DrawText("Select Your Fighter", 40, 40, 48, RAYWHITE);
             DrawText("Left/Right to change, Enter to confirm, Esc to back", 40, 100, 20, GRAY);
@@ -397,7 +454,7 @@ int main() {
             }
             EndMode3D();
             // HUD
-            DrawText("Esc: Back | C: View | P: Settings | F11: Fullscreen", 20, 20, 20, GRAY);
+            DrawText("Esc: Pause | C: View | P: Settings | F11: Fullscreen", 20, 20, 20, GRAY);
             // Health bars
             float barW = 300.0f;
             float barH = 20.0f;
@@ -405,6 +462,11 @@ int main() {
             DrawRectangle(20, 60, (int)(barW * (server.players[0].health/100.0f)), (int)barH, RED);
             DrawRectangle(GetScreenWidth() - 20 - (int)barW, 60, (int)barW, (int)barH, DARKGRAY);
             DrawRectangle(GetScreenWidth() - 20 - (int)barW, 60, (int)(barW * (server.players[1].health/100.0f)), (int)barH, BLUE);
+            // Scoreboard
+            DrawText(TextFormat("Score %d - %d", playerScore[0], playerScore[1]), GetScreenWidth()/2 - 80, 20, 24, YELLOW);
+            if (!roundActive && lastScorer != -1) {
+                DrawText(lastScorer == 0 ? "KO! Player 1 scores" : "KO! Player 2 scores", GetScreenWidth()/2 - 120, 60, 24, ORANGE);
+            }
             // Crosshair for FPS
             if (viewMode == ViewMode::FirstPerson) {
                 int cx = GetScreenWidth()/2;
@@ -418,6 +480,10 @@ int main() {
             DrawText(TextFormat("Mouse sensitivity: %.2f  ([ , ])", mouseSensitivity), 40, 140, 24, LIGHTGRAY);
             DrawText(TextFormat("Cursor lock (L): %s", lockCursor ? "ON" : "OFF"), 40, 170, 24, LIGHTGRAY);
             DrawText("Enter: Back to Select | Esc: Main Menu", 40, 210, 20, GRAY);
+        } else if (gameState == GameState::Pause) {
+            DrawText("Paused", GetScreenWidth()/2 - 60, GetScreenHeight()/2 - 40, 48, RAYWHITE);
+            DrawText("Enter/Esc: Resume", GetScreenWidth()/2 - 100, GetScreenHeight()/2 + 20, 20, GRAY);
+            DrawText("Backspace: Main Menu", GetScreenWidth()/2 - 110, GetScreenHeight()/2 + 50, 20, GRAY);
         }
 
         EndDrawing();
