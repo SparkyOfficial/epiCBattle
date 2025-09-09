@@ -1,3 +1,19 @@
+# Build artifacts
+/build/
+/build-*/
+/*.sln
+/*.vcxproj*
+/.vs/
+
+# OS files
+Thumbs.db
+*.DS_Store
+
+# Raylib caches (if any)
+*.obj
+*.pdb
+*.ilk
+*.log
 CMakeLists.txt.user
 CMakeCache.txt
 CMakeFiles
