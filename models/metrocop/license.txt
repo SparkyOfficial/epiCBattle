@@ -1,0 +1,11 @@
+Model Information:
+* title:	Half-Life: Alyx Metrocop
+* source:	https://sketchfab.com/3d-models/half-life-alyx-metrocop-091444e4188d417fb8c7b79b4a40c7f5
+* author:	Octane reboot (https://sketchfab.com/Redwthr)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Half-Life: Alyx Metrocop" (https://sketchfab.com/3d-models/half-life-alyx-metrocop-091444e4188d417fb8c7b79b4a40c7f5) by Octane reboot (https://sketchfab.com/Redwthr) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
