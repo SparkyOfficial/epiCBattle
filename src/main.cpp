@@ -146,6 +146,17 @@ int main() {
             if (server.players[victim].health < 0) server.players[victim].health = 0;
         }
     };
+    auto heavyDamageIfInRange = [&](int attacker, int victim){
+        const float range = 2.8f;
+        const int damage = 22;
+        Vector3 a = server.players[attacker].position;
+        Vector3 b = server.players[victim].position;
+        float d = Vector3Distance(a, b);
+        if (d <= range) {
+            server.players[victim].health -= damage;
+            if (server.players[victim].health < 0) server.players[victim].health = 0;
+        }
+    };
 
     // Rounds / scoring
     int playerScore[2] = {0, 0};
@@ -246,8 +257,11 @@ int main() {
                     return dir;
                 };
 
-                auto doAttackPressed = [&](int playerIndex){
+                auto doLightAttackPressed = [&](int playerIndex){
                     return playerIndex == 0 ? IsMouseButtonPressed(MOUSE_BUTTON_LEFT) : IsKeyPressed(KEY_RIGHT_CONTROL);
+                };
+                auto doHeavyAttackPressed = [&](int playerIndex){
+                    return playerIndex == 0 ? IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) : IsKeyPressed(KEY_RIGHT_ALT);
                 };
 
                 // Fixed-step server tick
@@ -290,12 +304,20 @@ int main() {
                         // Attack logic
                         server.players[i].attackCooldown -= fixedDt;
                         if (server.players[i].attackCooldown < 0.0f) server.players[i].attackCooldown = 0.0f;
-                        if (roundActive && doAttackPressed(i) && server.players[i].attackCooldown <= 0.0f) {
-                            server.players[i].attacking = true;
-                            server.players[i].attackTimer = 0.2f;
-                            server.players[i].attackCooldown = 0.6f;
-                            int victim = (i == 0) ? 1 : 0;
-                            damageIfInRange(i, victim);
+                        if (roundActive && server.players[i].attackCooldown <= 0.0f) {
+                            if (doLightAttackPressed(i)) {
+                                server.players[i].attacking = true;
+                                server.players[i].attackTimer = 0.18f;
+                                server.players[i].attackCooldown = 0.45f;
+                                int victim = (i == 0) ? 1 : 0;
+                                damageIfInRange(i, victim);
+                            } else if (doHeavyAttackPressed(i)) {
+                                server.players[i].attacking = true;
+                                server.players[i].attackTimer = 0.35f;
+                                server.players[i].attackCooldown = 0.9f;
+                                int victim = (i == 0) ? 1 : 0;
+                                heavyDamageIfInRange(i, victim);
+                            }
                         }
                         if (server.players[i].attacking) {
                             server.players[i].attackTimer -= fixedDt;
@@ -431,6 +453,10 @@ int main() {
         } else if (gameState == GameState::Arena) {
             BeginMode3D(camera);
             DrawPlane({0.0f, 0.0f, 0.0f}, {arenaSize.x, arenaSize.z}, DARKGREEN);
+            // Obstacles
+            DrawCube({0.0f, 0.75f, 0.0f}, 1.5f, 1.5f, 1.5f, DARKGRAY);
+            DrawCube({-6.0f, 0.5f, 4.0f}, 1.0f, 1.0f, 3.0f, GRAY);
+            DrawCube({ 6.0f, 0.5f,-4.0f}, 1.0f, 1.0f, 3.0f, GRAY);
             DrawCube({-arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, RED);
             DrawCube({ arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, BLUE);
             // Draw two players
@@ -455,6 +481,7 @@ int main() {
             EndMode3D();
             // HUD
             DrawText("Esc: Pause | C: View | P: Settings | F11: Fullscreen", 20, 20, 20, GRAY);
+            DrawText("LMB/RMB: Light/Heavy (P1), RCtrl/RAlt: Light/Heavy (P2)", 20, 44, 18, DARKGRAY);
             // Health bars
             float barW = 300.0f;
             float barH = 20.0f;
