@@ -21,6 +21,8 @@ FetchContent_MakeAvailable(raylib)
 
 add_executable(epiCBattle
   src/main.cpp
+  src/core/types.h
+  src/game/maps.h
   src/game_states.h
 )
 

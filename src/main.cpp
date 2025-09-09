@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include "core/types.h"
+#include "game/maps.h"
 
-enum class GameState { Menu, ModeSelect, MapSelect, CharacterSelect, Settings, Arena, Pause, Exit };
-enum class ViewMode { FirstPerson, ThirdPerson };
-enum class MapType { Green, Desert };
+// Types declared in headers
 
 struct CharacterDef {
     std::string name;
@@ -105,29 +105,8 @@ int main() {
 
     ensureLoaded(selectedIndex);
 
-    // Simple ground
-    Vector3 arenaSize = { 30.0f, 1.0f, 30.0f };
-    Color arenaColor = DARKGREEN;
-    struct AABB { Vector3 min; Vector3 max; };
-    std::vector<AABB> obstacles;
-
-    auto loadMap = [&](MapType map){
-        obstacles.clear();
-        if (map == MapType::Green) {
-            arenaSize = { 30.0f, 1.0f, 30.0f };
-            arenaColor = DARKGREEN;
-            obstacles.push_back({ {-0.75f, 0.0f, -0.75f}, {0.75f, 1.5f, 0.75f} });
-            obstacles.push_back({ {-6.5f, 0.0f, 2.5f}, {-5.5f, 1.0f, 5.5f} });
-            obstacles.push_back({ { 5.5f, 0.0f,-5.5f}, { 6.5f, 1.0f,-2.5f} });
-        } else {
-            arenaSize = { 36.0f, 1.0f, 22.0f };
-            arenaColor = Color{200, 180, 120, 255};
-            obstacles.push_back({ {-2.5f, 0.0f, -1.0f}, {2.5f, 1.2f, 1.0f} });
-            obstacles.push_back({ {-12.0f,0.0f,-9.0f}, {-9.0f, 1.0f,-6.0f} });
-            obstacles.push_back({ {  9.0f,0.0f, 6.0f}, {12.0f, 1.0f, 9.0f} });
-        }
-    };
-    loadMap(currentMap);
+    // Simple ground from map data
+    MapData mapData = loadMapData(currentMap);
 
     // Simple "server" state for local multiplayer (2 players)
     struct PlayerState {
@@ -229,7 +208,7 @@ int main() {
                 if (delta != 0) mapIdx = ClampIndex(mapIdx + delta, 0, 1);
                 if (IsKeyPressed(KEY_ENTER)) {
                     currentMap = (mapIdx == 0) ? MapType::Green : MapType::Desert;
-                    loadMap(currentMap);
+                    mapData = loadMapData(currentMap);
                     gameState = GameState::CharacterSelect;
                 }
                 if (IsKeyPressed(KEY_ESCAPE)) gameState = GameState::ModeSelect;
@@ -318,7 +297,7 @@ int main() {
                         Vector3 nextPos = server.players[i].position;
                         nextPos.x += dir.x * speed * fixedDt;
                         auto intersects = [&](Vector3 p){
-                            for (const auto &b : obstacles) {
+                            for (const auto &b : mapData.obstacles) {
                                 if (p.x > b.min.x && p.x < b.max.x && p.y >= b.min.y && p.y <= b.max.y && p.z > b.min.z && p.z < b.max.z) return true;
                             }
                             return false;
@@ -348,8 +327,8 @@ int main() {
                         }
 
                         // Clamp to arena bounds
-                        server.players[i].position.x = Clamp(server.players[i].position.x, -arenaSize.x * 0.5f + 1.0f, arenaSize.x * 0.5f - 1.0f);
-                        server.players[i].position.z = Clamp(server.players[i].position.z, -arenaSize.z * 0.5f + 1.0f, arenaSize.z * 0.5f - 1.0f);
+                        server.players[i].position.x = Clamp(server.players[i].position.x, -mapData.arenaSize.x * 0.5f + 1.0f, mapData.arenaSize.x * 0.5f - 1.0f);
+                        server.players[i].position.z = Clamp(server.players[i].position.z, -mapData.arenaSize.z * 0.5f + 1.0f, mapData.arenaSize.z * 0.5f - 1.0f);
 
                         // Attack logic
                         server.players[i].attackCooldown -= fixedDt;
@@ -507,14 +486,15 @@ int main() {
             DrawRectangleLines(vpX, vpY, vpW, vpH, DARKGRAY);
         } else if (gameState == GameState::Arena) {
             BeginMode3D(camera);
-            DrawPlane({0.0f, 0.0f, 0.0f}, {arenaSize.x, arenaSize.z}, arenaColor);
-            for (const auto &b : obstacles) {
+            DrawPlane({0.0f, 0.0f, 0.0f}, {mapData.arenaSize.x, mapData.arenaSize.z}, mapData.arenaColor);
+            for (const auto &b : mapData.obstacles) {
                 Vector3 size = { b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z };
                 Vector3 center = { (b.min.x + b.max.x)*0.5f, (b.min.y + b.max.y)*0.5f, (b.min.z + b.max.z)*0.5f };
-                DrawCube(center, size.x, size.y, size.z, (arenaColor.a==255 && arenaColor.g>arenaColor.b)?Color{160,140,100,255}:GRAY);
+                bool isDesert = (mapData.arenaColor.r==200 && mapData.arenaColor.g==180);
+                DrawCube(center, size.x, size.y, size.z, isDesert?Color{160,140,100,255}:GRAY);
             }
-            DrawCube({-arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, RED);
-            DrawCube({ arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, BLUE);
+            DrawCube({-mapData.arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, RED);
+            DrawCube({ mapData.arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, BLUE);
             // Draw two players
             for (int i = 0; i < 2; ++i) {
                 int ci = server.players[i].characterIndex;
