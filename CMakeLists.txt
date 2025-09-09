@@ -32,13 +32,11 @@ if (WIN32)
   target_compile_definitions(epiCBattle PRIVATE NOMINMAX)
 endif()
 
-# Resources directory for runtime
-add_custom_target(copy_assets ALL
+# Copy resources next to the executable after build
+add_custom_command(TARGET epiCBattle POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/models $<TARGET_FILE_DIR:epiCBattle>/models
-  BYPRODUCTS $<TARGET_FILE_DIR:epiCBattle>/models
+    ${CMAKE_SOURCE_DIR}/models
+    $<TARGET_FILE_DIR:epiCBattle>/models
 )
-
-add_dependencies(epiCBattle copy_assets)
 
 
