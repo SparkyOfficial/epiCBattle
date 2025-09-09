@@ -5,8 +5,9 @@
 #include <vector>
 #include <cmath>
 
-enum class GameState { Menu, ModeSelect, CharacterSelect, Settings, Arena, Pause, Exit };
+enum class GameState { Menu, ModeSelect, MapSelect, CharacterSelect, Settings, Arena, Pause, Exit };
 enum class ViewMode { FirstPerson, ThirdPerson };
+enum class MapType { Green, Desert };
 
 struct CharacterDef {
     std::string name;
@@ -54,6 +55,7 @@ int main() {
     camera.fovy = fieldOfView;
     camera.projection = CAMERA_PERSPECTIVE;
     ViewMode viewMode = ViewMode::FirstPerson;
+    MapType currentMap = MapType::Green;
 
     int selectedIndex = 0;
     std::vector<LoadedCharacter> loaded(kCharacters.size());
@@ -105,6 +107,27 @@ int main() {
 
     // Simple ground
     Vector3 arenaSize = { 30.0f, 1.0f, 30.0f };
+    Color arenaColor = DARKGREEN;
+    struct AABB { Vector3 min; Vector3 max; };
+    std::vector<AABB> obstacles;
+
+    auto loadMap = [&](MapType map){
+        obstacles.clear();
+        if (map == MapType::Green) {
+            arenaSize = { 30.0f, 1.0f, 30.0f };
+            arenaColor = DARKGREEN;
+            obstacles.push_back({ {-0.75f, 0.0f, -0.75f}, {0.75f, 1.5f, 0.75f} });
+            obstacles.push_back({ {-6.5f, 0.0f, 2.5f}, {-5.5f, 1.0f, 5.5f} });
+            obstacles.push_back({ { 5.5f, 0.0f,-5.5f}, { 6.5f, 1.0f,-2.5f} });
+        } else {
+            arenaSize = { 36.0f, 1.0f, 22.0f };
+            arenaColor = Color{200, 180, 120, 255};
+            obstacles.push_back({ {-2.5f, 0.0f, -1.0f}, {2.5f, 1.2f, 1.0f} });
+            obstacles.push_back({ {-12.0f,0.0f,-9.0f}, {-9.0f, 1.0f,-6.0f} });
+            obstacles.push_back({ {  9.0f,0.0f, 6.0f}, {12.0f, 1.0f, 9.0f} });
+        }
+    };
+    loadMap(currentMap);
 
     // Simple "server" state for local multiplayer (2 players)
     struct PlayerState {
@@ -192,11 +215,24 @@ int main() {
             } break;
             case GameState::ModeSelect: {
                 if (IsKeyPressed(KEY_ENTER)) {
-                    gameState = GameState::CharacterSelect;
+                    gameState = GameState::MapSelect;
                 }
                 if (IsKeyPressed(KEY_ESCAPE)) {
                     gameState = GameState::Menu;
                 }
+            } break;
+            case GameState::MapSelect: {
+                static int mapIdx = 0;
+                int delta = 0;
+                if (IsKeyPressed(KEY_RIGHT) || GetMouseWheelMove() < 0) delta = 1;
+                if (IsKeyPressed(KEY_LEFT) || GetMouseWheelMove() > 0) delta = -1;
+                if (delta != 0) mapIdx = ClampIndex(mapIdx + delta, 0, 1);
+                if (IsKeyPressed(KEY_ENTER)) {
+                    currentMap = (mapIdx == 0) ? MapType::Green : MapType::Desert;
+                    loadMap(currentMap);
+                    gameState = GameState::CharacterSelect;
+                }
+                if (IsKeyPressed(KEY_ESCAPE)) gameState = GameState::ModeSelect;
             } break;
             case GameState::CharacterSelect: {
                 int delta = 0;
@@ -278,9 +314,23 @@ int main() {
                         if (dir.x != 0.0f || dir.z != 0.0f) {
                             server.players[i].yawRadians = atan2f(-dir.x, -dir.z);
                         }
-                        // Move in world plane XZ
-                        server.players[i].position.x += dir.x * speed * fixedDt;
-                        server.players[i].position.z += dir.z * speed * fixedDt;
+                        // Move in world plane XZ with simple obstacle collisions
+                        Vector3 nextPos = server.players[i].position;
+                        nextPos.x += dir.x * speed * fixedDt;
+                        auto intersects = [&](Vector3 p){
+                            for (const auto &b : obstacles) {
+                                if (p.x > b.min.x && p.x < b.max.x && p.y >= b.min.y && p.y <= b.max.y && p.z > b.min.z && p.z < b.max.z) return true;
+                            }
+                            return false;
+                        };
+                        if (!intersects({nextPos.x, server.players[i].position.y, server.players[i].position.z})) {
+                            server.players[i].position.x = nextPos.x;
+                        }
+                        nextPos = server.players[i].position;
+                        nextPos.z += dir.z * speed * fixedDt;
+                        if (!intersects({server.players[i].position.x, server.players[i].position.y, nextPos.z})) {
+                            server.players[i].position.z = nextPos.z;
+                        }
 
                         // Jump/gravity
                         const float gravity = -22.0f;
@@ -419,6 +469,11 @@ int main() {
             DrawText("Select Mode", 40, 40, 48, RAYWHITE);
             DrawText("1v1 Arena (Enter)", 40, 110, 28, LIGHTGRAY);
             DrawText("Esc: Back", 40, 160, 20, GRAY);
+        } else if (gameState == GameState::MapSelect) {
+            DrawText("Select Map", 40, 40, 48, RAYWHITE);
+            DrawText("Left/Right: Change, Enter: Confirm, Esc: Back", 40, 100, 20, GRAY);
+            DrawText("Green Arena", 60, 160, 32, DARKGREEN);
+            DrawText("Desert Arena", 60, 210, 32, Color{200,180,120,255});
         } else if (gameState == GameState::CharacterSelect) {
             DrawText("Select Your Fighter", 40, 40, 48, RAYWHITE);
             DrawText("Left/Right to change, Enter to confirm, Esc to back", 40, 100, 20, GRAY);
@@ -452,11 +507,12 @@ int main() {
             DrawRectangleLines(vpX, vpY, vpW, vpH, DARKGRAY);
         } else if (gameState == GameState::Arena) {
             BeginMode3D(camera);
-            DrawPlane({0.0f, 0.0f, 0.0f}, {arenaSize.x, arenaSize.z}, DARKGREEN);
-            // Obstacles
-            DrawCube({0.0f, 0.75f, 0.0f}, 1.5f, 1.5f, 1.5f, DARKGRAY);
-            DrawCube({-6.0f, 0.5f, 4.0f}, 1.0f, 1.0f, 3.0f, GRAY);
-            DrawCube({ 6.0f, 0.5f,-4.0f}, 1.0f, 1.0f, 3.0f, GRAY);
+            DrawPlane({0.0f, 0.0f, 0.0f}, {arenaSize.x, arenaSize.z}, arenaColor);
+            for (const auto &b : obstacles) {
+                Vector3 size = { b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z };
+                Vector3 center = { (b.min.x + b.max.x)*0.5f, (b.min.y + b.max.y)*0.5f, (b.min.z + b.max.z)*0.5f };
+                DrawCube(center, size.x, size.y, size.z, (arenaColor.a==255 && arenaColor.g>arenaColor.b)?Color{160,140,100,255}:GRAY);
+            }
             DrawCube({-arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, RED);
             DrawCube({ arenaSize.x * 0.5f, 0.5f, 0.0f}, 1.0f, 1.0f, 1.0f, BLUE);
             // Draw two players
